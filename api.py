@@ -19,7 +19,11 @@ from database import (
 )
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[
+    "https://iotsentinal.netlify.app/login.html",
+    "http://localhost:8080",
+    "http://127.0.0.1:5500"
+])
 
 MODELS_DIR = Path('models')
 models_loaded = False
