@@ -1,8 +1,21 @@
 services:
   - type: web
-    name: iot-sentinel-backend
+    name: backend-iot-sentinel
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn api:app
-    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+```
+
+**Fix 3 — Add `gunicorn` to `requirements.txt`:**
+```
+flask
+flask-cors
+scikit-learn
+numpy
+pandas
+joblib
+scipy
+gunicorn
