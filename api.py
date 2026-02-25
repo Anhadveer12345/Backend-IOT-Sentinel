@@ -20,7 +20,7 @@ from database import (
 
 app = Flask(__name__)
 CORS(app, origins=[
-    "https://iotsentinal.netlify.app/login.html",
+    "https://remarkable-manatee-502b78.netlify.app",
     "http://localhost:8080",
     "http://127.0.0.1:5500"
 ])
