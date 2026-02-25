@@ -19,13 +19,20 @@ from database import (
 )
 
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://remarkable-manatee-502b78.netlify.app",
-    "http://localhost:8080",
-    "http://127.0.0.1:5500"
-])
 
-MODELS_DIR = Path('models')
+# ── CORS — allow ALL origins (required for Render + Netlify) ──
+CORS(app, resources={r"/*": {"origins": "*"}},
+     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
+MODELS_DIR    = Path('models')
 models_loaded = False
 rf_model = cnn_model = lstm_model = None
 scaler_rf = scaler_cnn = scaler_lstm = None
@@ -33,8 +40,6 @@ rf_features = cnn_features = lstm_features = None
 meta = {}
 
 # ── Load Models ───────────────────────────────
-
-
 def load_models():
     global rf_model, cnn_model, lstm_model
     global scaler_rf, scaler_cnn, scaler_lstm
@@ -45,14 +50,14 @@ def load_models():
         return False
     try:
         print("[API] Loading models...")
-        rf_model = joblib.load(MODELS_DIR / 'rf_model.pkl')
-        scaler_rf = joblib.load(MODELS_DIR / 'scaler_rf.pkl')
-        rf_features = joblib.load(MODELS_DIR / 'rf_features.pkl')
-        cnn_model = joblib.load(MODELS_DIR / 'cnn_model.pkl')
-        scaler_cnn = joblib.load(MODELS_DIR / 'scaler_cnn.pkl')
-        cnn_features = joblib.load(MODELS_DIR / 'cnn_features.pkl')
-        lstm_model = joblib.load(MODELS_DIR / 'lstm_model.pkl')
-        scaler_lstm = joblib.load(MODELS_DIR / 'scaler_lstm.pkl')
+        rf_model      = joblib.load(MODELS_DIR / 'rf_model.pkl')
+        scaler_rf     = joblib.load(MODELS_DIR / 'scaler_rf.pkl')
+        rf_features   = joblib.load(MODELS_DIR / 'rf_features.pkl')
+        cnn_model     = joblib.load(MODELS_DIR / 'cnn_model.pkl')
+        scaler_cnn    = joblib.load(MODELS_DIR / 'scaler_cnn.pkl')
+        cnn_features  = joblib.load(MODELS_DIR / 'cnn_features.pkl')
+        lstm_model    = joblib.load(MODELS_DIR / 'lstm_model.pkl')
+        scaler_lstm   = joblib.load(MODELS_DIR / 'scaler_lstm.pkl')
         lstm_features = joblib.load(MODELS_DIR / 'lstm_features.pkl')
         with open(MODELS_DIR / 'meta.json') as f:
             meta = json.load(f)
@@ -64,45 +69,29 @@ def load_models():
         return False
 
 # ── Auth Helpers ──────────────────────────────
-
-
 def get_current_user():
-    """Get user from Bearer token in Authorization header."""
     auth = request.headers.get('Authorization', '')
     if auth.startswith('Bearer '):
         token = auth[7:]
         return get_user_by_token(token)
     return None
 
-
-def require_auth():
-    user = get_current_user()
-    if not user:
-        return None, jsonify({'error': 'Unauthorized. Please login.'}), 401
-    return user, None, None
-
 # ── ML Helpers ────────────────────────────────
-
-
 def run_rf(features_dict):
-    row = np.array([features_dict.get(f, 0.0)
-                   for f in rf_features]).reshape(1, -1)
+    row  = np.array([features_dict.get(f, 0.0) for f in rf_features]).reshape(1, -1)
     prob = rf_model.predict_proba(scaler_rf.transform(row))[0]
     return round(float(prob[0]) * 100, 2)
 
-
 def run_cnn(features_dict):
-    row = np.array([features_dict.get(f, 0.0)
-                   for f in cnn_features]).reshape(1, -1)
+    row  = np.array([features_dict.get(f, 0.0) for f in cnn_features]).reshape(1, -1)
     prob = cnn_model.predict_proba(scaler_cnn.transform(row))[0]
     return round(float(prob[0]) * 100, 2)
 
-
 def run_lstm(time_series):
-    last = time_series[-1] if time_series else {}
-    row = np.array([last.get(f, 0.0) for f in lstm_features]).reshape(1, -1)
+    last  = time_series[-1] if time_series else {}
+    row   = np.array([last.get(f, 0.0) for f in lstm_features]).reshape(1, -1)
     row_s = scaler_lstm.transform(row)
-    prob = lstm_model.predict_proba(row_s)[0]
+    prob  = lstm_model.predict_proba(row_s)[0]
     score = round(float(prob[0]) * 100, 2)
     return {
         'lstm_score':          score,
@@ -111,13 +100,13 @@ def run_lstm(time_series):
     }
 
 # ── Auth Routes ───────────────────────────────
-
-
-@app.route('/auth/signup', methods=['POST'])
+@app.route('/auth/signup', methods=['POST', 'OPTIONS'])
 def signup():
-    data = request.get_json()
-    email = data.get('email', '').strip()
-    name = data.get('name', '').strip()
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    data     = request.get_json()
+    email    = data.get('email', '').strip()
+    name     = data.get('name', '').strip()
     password = data.get('password', '')
     if not email or not name or not password:
         return jsonify({'error': 'Email, name and password required'}), 400
@@ -133,11 +122,12 @@ def signup():
         'api_key': user['api_key']
     })
 
-
-@app.route('/auth/login', methods=['POST'])
+@app.route('/auth/login', methods=['POST', 'OPTIONS'])
 def login():
-    data = request.get_json()
-    email = data.get('email', '')
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    data     = request.get_json()
+    email    = data.get('email', '')
     password = data.get('password', '')
     user, error = login_user(email, password)
     if error:
@@ -149,14 +139,14 @@ def login():
         'api_key': user['api_key']
     })
 
-
-@app.route('/auth/logout', methods=['POST'])
+@app.route('/auth/logout', methods=['POST', 'OPTIONS'])
 def logout():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     auth = request.headers.get('Authorization', '')
     if auth.startswith('Bearer '):
         delete_session(auth[7:])
     return jsonify({'status': 'logged out'})
-
 
 @app.route('/auth/me', methods=['GET'])
 def me():
@@ -167,42 +157,39 @@ def me():
                              'name': user['name'], 'api_key': user['api_key']}})
 
 # ── Core Routes ───────────────────────────────
-
-
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'models_loaded': models_loaded,
                     'threshold': 70, 'meta': meta})
 
-
-@app.route('/authenticate', methods=['POST'])
+@app.route('/authenticate', methods=['POST', 'OPTIONS'])
 def authenticate():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     if not models_loaded:
         return jsonify({'error': 'Models not loaded'}), 503
-
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No JSON body'}), 400
 
-    # Support both token auth and api_key auth (for agents)
     user = get_current_user()
     if not user:
         api_key = data.get('api_key') or request.headers.get('X-API-Key')
-        user = get_user_by_api_key(api_key)
+        user    = get_user_by_api_key(api_key)
     if not user:
         return jsonify({'error': 'Unauthorized. Provide token or api_key'}), 401
 
-    device_id = data.get('device_id', 'UNKNOWN')
+    device_id   = data.get('device_id', 'UNKNOWN')
     device_type = data.get('device_type', 'Unknown')
-    features = data.get('features', {})
+    features    = data.get('features', {})
     time_series = data.get('time_series', [features])
 
-    start = time.time()
-    rf_score = run_rf(features)
-    cnn_score = run_cnn(features)
-    lstm_res = run_lstm(time_series)
+    start      = time.time()
+    rf_score   = run_rf(features)
+    cnn_score  = run_cnn(features)
+    lstm_res   = run_lstm(time_series)
     mean_score = round((rf_score + cnn_score) / 2, 2)
-    trusted = bool(mean_score >= 70)
+    trusted    = bool(mean_score >= 70)
 
     result = {
         'device_id':   device_id,
@@ -224,10 +211,9 @@ def authenticate():
     }
 
     register_device(device_id, user['id'], device_type,
-                    data.get('ip', ''), data.get('protocol', ''), data.get('mac', ''))
+                    data.get('ip',''), data.get('protocol',''), data.get('mac',''))
     save_auth_result(result, user['id'])
     return jsonify(result)
-
 
 @app.route('/devices', methods=['GET'])
 def devices():
@@ -236,18 +222,18 @@ def devices():
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify({'devices': get_all_devices(user['id'])})
 
-
-@app.route('/devices/register', methods=['POST'])
+@app.route('/devices/register', methods=['POST', 'OPTIONS'])
 def register_dev():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     d = request.get_json()
     register_device(d.get('device_id'), user['id'],
-                    d.get('device_type', 'Unknown'),
-                    d.get('ip', ''), d.get('protocol', ''), d.get('mac', ''))
+                    d.get('device_type','Unknown'),
+                    d.get('ip',''), d.get('protocol',''), d.get('mac',''))
     return jsonify({'status': 'registered'})
-
 
 @app.route('/alerts', methods=['GET'])
 def get_alert_list():
@@ -256,15 +242,15 @@ def get_alert_list():
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify({'alerts': get_alerts(user['id'])})
 
-
-@app.route('/alerts/<int:alert_id>/dismiss', methods=['POST'])
+@app.route('/alerts/<int:alert_id>/dismiss', methods=['POST', 'OPTIONS'])
 def dismiss(alert_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     dismiss_alert(alert_id, user['id'])
     return jsonify({'status': 'dismissed'})
-
 
 @app.route('/stats', methods=['GET'])
 def stats():
@@ -273,20 +259,17 @@ def stats():
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(get_stats(user['id']))
 
-
 @app.route('/history', methods=['GET'])
 def history():
-    user = get_current_user()
+    user  = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     limit = request.args.get('limit', 100, type=int)
     return jsonify({'history': get_auth_history(user['id'], limit)})
 
-
 @app.route('/model_info', methods=['GET'])
 def model_info():
     return jsonify(meta)
-
 
 # ── Main ──────────────────────────────────────
 if __name__ == '__main__':
@@ -295,8 +278,7 @@ if __name__ == '__main__':
     print("="*60)
     init_db()
     load_models()
-    print("\n[API] Starting on http://localhost:8080")
+    port = int(os.environ.get('PORT', 8080))
+    print(f"\n[API] Starting on http://0.0.0.0:{port}")
     print("[API] Press Ctrl+C to stop\n")
-    port = int(os.environ.get("PORT", 8080))
-
     app.run(host='0.0.0.0', port=port, debug=False)
